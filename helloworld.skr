@@ -1,0 +1,44 @@
+Any text is allowed as comments, just don't use numbers, double colons and dashes. ;)
+
+Instruction nodes
+0:1     0-1     Set course for node seven
+1:7     1-2
+2:2     2-3     Disconnect start and end nodes (so the program can terminate instead of backtrack)
+3:0     3-4
+4:26    4-5
+5:0     5-6
+6:1     6-7     Set course for end node
+7:26    7-8
+8:6     8-9     Copy character to following connect/disconnect (to terminate program after printing last character)
+9:100   9-10
+10:14   10-11
+11:2    11-12   Disconnect next point after the last character has been printed, to terminate the program
+12:14   12-13
+13:15   13-14
+14:0    14-15       (character is copied here, if it's zero it disconnects)
+15:7    15-16   Print character
+16:100  16-17
+17:4    17-18   Increment copy pointer
+18:9    18-19
+19:4    19-20   Increment print pointer
+20:16   20-21
+21:2    21-22   Connect start and end nodes again to loop back to the start
+22:0    22-23
+23:26   23-24
+24:1    24-25
+25:1    25-26   Set course for the start (just a bit beyond it so the start can set the destination again too)
+26:1
+
+Data nodes
+100: 104    hello world
+101: 101
+102: 108
+103: 108
+104: 111
+105: 32
+106: 119
+107: 111
+108: 114
+109: 108
+110: 100
+111: 0      Zero terminated string (zero value is used to disconnect nodes, see above)
