@@ -1,18 +1,16 @@
 Seeker
 ======
-
 An esoteric programming language that uses pathfinding to determine where the instruction pointer should move next.
 
 Overview
 --------
-
 Seeker programs consist of a bidirectional graph. Each node holds a single value and can be connected to any number of other nodes. Values are interpreted as opcodes or as arguments for opcodes.
 
 When a Seeker thread has processed the value of its current node, its instruction pointer moves forward - but what is forward in a graph? Seeker uses pathfinding to determine that. Each thread not only keeps track of what node it is currently at, but also what node it is heading for. A thread will always move to the next node on the shortest path towards its destination.
 
 Quick instructions
 ------------------
-To run a .skr file:
+To run a .skr file (requires Python 3.x):
 ```
 python seeker.py filename.skr
 ```
