@@ -11,30 +11,41 @@
 # can connect and disconnect nodes, as well as create and destroy nodes at
 # run-time.
 #
-# Each execution step, a Seeker thread processes the value of the node it's
+# Each execution step, a Seeker thread processes the value of the node it is
 # currently pointing to, and then moves forward to the next node. But how is
-# 'forward' determined in a bidirectional graph? Simply by determining the
-# shortest route between the current node and the thread's target node.
+# 'forward' determined in a bidirectional graph? Seeker does this by finding
+# the shortest route between the current node and the thread's target node.
 #
 # When a program is loaded, the Seeker interpreter creates a thread that starts
-# at the node with the lowest number, and it's destination is set to the node
-# with the next-lowest number.
+# at node number 0, and its destination is set to node number 1. Node 0 is also
+# a special node: copying from it will read a byte from the input, copying to
+# it will write to the output.
 #
 # The following opcodes are available:
-#  1: set destination (node number)
-#  2: change connection (node number, node number, 0 = disconnect-if-connected
-#       / other = connect-if-not-connected)
-#  3: change node (node number, 0 = destroy-if-exists
-#       / other = create-if-not-exists)
-#  4: increment node value (node number)
-#  5: decrement node value (node number)
-#  6: copy value from node to node (from node number, to node number)
-#  7: output node value (node number)
-# When Seeker is started in extended mode, the following opcodes become
-# available:
-#  8: create thread (start node number, destination node number)
-#  9: breakpoint ()
 #
+#  1: set destination (node number)
+#
+#  2: change connection (node number, node number,
+#       0 or less = disconnect-if-connected /
+#       other = connect-if-not-connected)
+#
+#  3: change node (node number,
+#       0 or less = destroy-if-exists
+#       other = create-if-not-exists)
+#
+#  4: increment node value (node number)
+#
+#  5: decrement node value (node number)
+#
+#  6: copy value from node to node (from node number, to node number)
+#
+# When Seeker is started in extended mode, additional opcodes become available:
+#
+#  7: create thread (start node number, destination node number)
+#
+#  8: breakpoint ()
+#
+
 import inspect, sys, optparse
 
 
@@ -118,7 +129,9 @@ class SeekerInterpreter(object):
         self.threads = []
         self.next_thread_id = 0
         self.paused = False
-        self.output = ''
+        
+        self.input = sys.stdin
+        self.output = sys.stdout
         
         self.verbose = False
         self.extended = False
@@ -144,7 +157,9 @@ class SeekerInterpreter(object):
         self.threads = []
         self.next_thread_id = 0
         self.paused = False
-        self.output = ''
+        
+        self.input = sys.stdin
+        self.output = sys.stdout
     #
     
     def loadString(self, seeker_string):
@@ -210,6 +225,8 @@ class SeekerInterpreter(object):
         else:
             if self.verbose:
                 print('Program terminated, no active threads left.')
+        
+        self.output.flush()
     #
     
     def execute_step(self):
@@ -310,17 +327,15 @@ class SeekerInterpreter(object):
     #
     
     def get_input(self):
-        if len(self.input) > 0:
-            value = self.input[0]
-            self.input = self.input[1:]
-            return value
-        else:
-            return -1
+        value = self.input.read(1)
+        return ord(value) if len(value) == 1 else -1
     #
     
     def write_output(self, value):
-        self.output += chr(value % 256)
-        print(self.output[-1])
+        if self.output is sys.stdout:
+            self.output.write(chr(value % 256))
+        else:
+            self.output.write(bytes([value % 256]))
     #
     
     def op_setDestination(self, thread, node_id):
@@ -406,6 +421,11 @@ if __name__ == '__main__':
         interpreter = SeekerInterpreter()
         interpreter.verbose = options.verbose
         interpreter.extended = options.extended
+        
         interpreter.loadFile(args[0])
+        
+        interpreter.input = sys.stdin if options.input is None else open(options.input, 'rb')
+        interpreter.output = sys.stdout if options.output is None else open(options.output, 'ab')
+        
         interpreter.run()
 #
