@@ -35,7 +35,7 @@
 #  8: create thread (start node number, destination node number)
 #  9: breakpoint ()
 #
-import inspect, sys
+import inspect, sys, optparse
 
 
 class Node(object):
@@ -120,7 +120,7 @@ class SeekerInterpreter(object):
         self.paused = False
         self.output = ''
         
-        self.debug = False
+        self.verbose = False
         self.extended = False
         
         self.operations = {
@@ -130,11 +130,13 @@ class SeekerInterpreter(object):
             4: Operation(self.op_increment),
             5: Operation(self.op_decrement),
             6: Operation(self.op_copy),
-            7: Operation(self.op_output),
             
-            8: Operation(self.op_createThread, extended = True),
-            9: Operation(self.op_breakpoint, extended = True),
+            7: Operation(self.op_createThread, extended = True),
+            8: Operation(self.op_breakpoint, extended = True),
         }
+        
+        # Node 0 is the special IO node - it can not be removed.
+        self.io_node_id = 0
     #
     
     def reset(self):
@@ -161,6 +163,8 @@ class SeekerInterpreter(object):
                     operator = c
                     node_id = int(digits_buffer)
                     digits_buffer = ''
+                else:
+                    digits_buffer += c
             else:
                 if None not in [node_id, operator] and digits_buffer != '':
                     if operator == ':':
@@ -184,8 +188,9 @@ class SeekerInterpreter(object):
                 # TODO: Also make a warning / error callback? :)
                 print('Warning: failed to connect nodes {0} and {1}'.format(node_id, other_node_id))
         
-        if len(self.nodes) >= 2:
-            start_node, destination_node = (self.nodes[number] for number in sorted(self.nodes.keys())[:2])
+        # A program requires node 0 and node 1 to exist in order to run:
+        if 0 in self.nodes and 1 in self.nodes:
+            start_node, destination_node = self.nodes[0], self.nodes[1]
             self.threads.append(Thread(self.nextThreadId(), start_node, destination_node))
     #
     
@@ -200,10 +205,10 @@ class SeekerInterpreter(object):
             pass
         
         if self.paused:
-            if self.debug:
+            if self.verbose:
                 print('Program paused')
         else:
-            if self.debug:
+            if self.verbose:
                 print('Program terminated, no active threads left.')
     #
     
@@ -225,7 +230,7 @@ class SeekerInterpreter(object):
                     
                     # Are there enough arguments on the stack to execute the opcode?
                     if len(arguments) == operation.arguments_count:
-                        if self.debug:
+                        if self.verbose:
                             print('Thread {0} executing {1}({2}).'.format(thread.thread_id, operation.name, ' '.join(str(argument) for argument in arguments)))
                         
                         operation.execute(thread, arguments)
@@ -237,7 +242,7 @@ class SeekerInterpreter(object):
             # End of the line for this thread? Then terminate, because there's no way
             # we can get this thread moving again:
             if thread.current_node == thread.destination_node:
-                if self.debug:
+                if self.verbose:
                     print('Thread {0} is terminated.'.format(thread.thread_id))
                 
                 self.threads.remove(thread)
@@ -245,7 +250,7 @@ class SeekerInterpreter(object):
                 route = self.findRoute(thread.current_node, thread.destination_node)
                 if route is None:
                     # No route to destination, so stall this thread:
-                    if self.debug:
+                    if self.verbose:
                         print('Thread {0} is stalled.'.format(thread.thread_id))
                     
                     thread.stalled = True
@@ -253,7 +258,7 @@ class SeekerInterpreter(object):
                     # Move to the next node. We could cache the route but then we need
                     # to take care of invalidating route caches when the graph changes.
                     # So there's room for some optimization:
-                    if self.debug:
+                    if self.verbose:
                         node_id = [number for number, node in filter(lambda item: item[1] == route[0], self.nodes.items())][0]
                         print('Thread {0} is moving to node {1}.'.format(thread.thread_id, node_id))
                     
@@ -304,6 +309,20 @@ class SeekerInterpreter(object):
         return None
     #
     
+    def get_input(self):
+        if len(self.input) > 0:
+            value = self.input[0]
+            self.input = self.input[1:]
+            return value
+        else:
+            return -1
+    #
+    
+    def write_output(self, value):
+        self.output += chr(value % 256)
+        print(self.output[-1])
+    #
+    
     def op_setDestination(self, thread, node_id):
         if node_id in self.nodes:
             thread.destination_node = self.nodes[node_id]
@@ -311,17 +330,17 @@ class SeekerInterpreter(object):
     
     def op_setConnection(self, thread, node_id, other_node_id, connect):
         if node_id in self.nodes and other_node_id in self.nodes:
-            if connect == 0:
+            if connect <= 0:
                 self.nodes[node_id].disconnect(self.nodes[other_node_id])
             else:
                 self.nodes[node_id].connect(self.nodes[other_node_id])
     #
     
     def op_createDestroyNode(self, thread, node_id, create):
-        if node_id in self.nodes and create == 0:
+        if create <= 0 and node_id in self.nodes:
             node = self.nodes.pop(node_id)
             node.disconnectAll()
-        elif node_id not in self.nodes and create != 0:
+        elif create > 0 and node_id not in self.nodes:
             self.nodes[node_id] = Node(0)
     #
     
@@ -337,14 +356,20 @@ class SeekerInterpreter(object):
     
     def op_copy(self, thread, from_node_id, to_node_id):
         if from_node_id in self.nodes and to_node_id in self.nodes:
-            self.nodes[to_node_id].value = self.nodes[from_node_id].value
-    #
-    
-    def op_output(self, thread, node_id):
-        if node_id in self.nodes:
-            self.output += chr(self.nodes[node_id].value)
-            # TODO: Only print at the end? ...
-            print(chr(self.nodes[node_id].value), sep = '', end = '')
+            # The IO node is special: copying from it reads an input byte,
+            # copying to it writes to output. It's possible to move an input
+            # byte directly to the output with one copy operation.
+            
+            value = 0
+            if from_node_id == self.io_node_id:
+                value = self.get_input()
+            else:
+                value = self.nodes[from_node_id].value
+            
+            if to_node_id == self.io_node_id:
+                self.write_output(value)
+            else:
+                self.nodes[to_node_id].value = value
     #
     
     def op_createThread(self, thread, start_node_id, destination_node_id):
@@ -359,19 +384,28 @@ class SeekerInterpreter(object):
 
 interpreter = None
 if __name__ == '__main__':
-    # Check if any of the arguments specifies a .skr filename. If multiple .skr
-    # filenames are given, pick the first one. Then run it:
-    skr_arguments = [argument for argument in filter(lambda arg: arg.endswith('.skr'), sys.argv[1:])]
-    if len(skr_arguments) > 0:
-        interpreter = SeekerInterpreter()
-        if 'debug' in sys.argv:
-            interpreter.debug = True
-        if 'extended' in sys.argv:
-            interpreter.extended = True
-        
-        interpreter.loadFile(skr_arguments[0])
-        interpreter.run()
+    parser = optparse.OptionParser(usage = 'usage: %prog [options] skr-file-path')
+    parser.add_option('-i', '--input',
+                        help = 'Input file path.')
+    parser.add_option('-o', '--output',
+                        help = 'Output file path. Leave empty to use standard output.')
+    parser.add_option('-v', '--verbose',
+                        default = False,
+                        action = 'store_true',
+                        help = 'Enables verbose mode, useful for debugging.')
+    parser.add_option('-x', '--extended',
+                        default = False,
+                        action = 'store_true',
+                        help = 'Enables extended mode, which unlocks additional opcodes. Useful for more advances programs.')
+    
+    (options, args) = parser.parse_args()
+    
+    if len(args) < 1:
+        parser.print_help()
     else:
-        # TODO: Document argument format (debug, extended, etc.):
-        print('Pass a .skr filename to run the given Seeker file.')
+        interpreter = SeekerInterpreter()
+        interpreter.verbose = options.verbose
+        interpreter.extended = options.extended
+        interpreter.loadFile(args[0])
+        interpreter.run()
 #
