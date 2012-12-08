@@ -1,0 +1,57 @@
+This program prints a plus sign if the input, stored in node one hundred, is more than zero.
+It prints a minus sign if the input is less than zero. It prints zero if the input is zero.
+
+Start moving towards the end
+0:1     0-1
+1:30    1-2
+Copy input into 'connect' argument further down (instead of this we could also relay the path to lead through the input node)
+2:6     2-3
+3:100   3-4
+4:8     4-5
+Connect short route if input is more than zero, otherwise disconnect
+5:2     5-6
+6:17    6-7
+7:18    7-8
+8:0     8-9
+Copy input into 'connect' argument further down (this is used for the zero check)
+9:6     9-10
+10:100  10-11
+11:17   11-12
+Increment the connect argument
+12:4    12-13
+13:17   13-14
+Connect the print zero route if the input plus one is more than zero, otherwise disconnect
+14:2    14-15
+15:17   15-16
+16:21   16-17
+17:0    17-18   17-21   17-25       (these connections will be broken depending on the input value)
+
+Print plus path (shortest)
+18:6    18-19
+19:200  19-20
+20:0    20-30
+
+Print zero path
+21:6    21-22
+22:202  22-23
+23:0    23-24
+24:0    24-30
+
+Print minus path (longest)
+25:6    25-26
+26:201  26-27
+27:0    27-28
+28:0    28-29
+29:0    29-30
+
+End of the line, program terminates here
+30:0
+
+
+Input
+100:55      (try negative and positive values here, or zero, and note how the program prints either a minus or plus sign, or a zero)
+
+Constants
+200:43  plus sign character
+201:45  minus sign character
+202:48  zero character
